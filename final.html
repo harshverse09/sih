@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AtlasIntern: AI Internship Recommender</title>
+    
+    <!-- Tailwind CSS for modern, responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts for a clean, readable UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Icons from Phosphor Icons for visual cues -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- PDF.js library for parsing resumes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+    <style>
+        /* CSS Variables for theming */
+        :root {
+            --color-primary-from: #6d28d9;
+            --color-primary-to: #4f46e5;
+            --color-primary: #5b21b6;
+            --color-primary-hover: #4c1d95;
+            --color-accent: #c4b5fd;
+            --color-check: #16a34a;
+            --color-check-light: #bbf7d0;
+            --shadow-primary: rgba(93, 33, 181, 0.4);
+            --shadow-check: rgba(22, 163, 74, 0.2);
+        }
+
+        /* Custom styles to enhance the UI */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23eef2ff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            overflow-x: hidden;
+        }
+        
+        /* Interactive Animations */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 1s linear infinite; }
+        
+        /* Bouncy step transition */
+        .wizard-step { display: none; }
+        .wizard-step.active-forward {
+            display: block;
+            animation: bounceInFromRight 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .wizard-step.active-backward {
+            display: block;
+            animation: bounceInFromLeft 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        @keyframes bounceInFromRight {
+            0% { opacity: 0; transform: translateX(100%); }
+            60% { opacity: 1; transform: translateX(-10%); }
+            100% { transform: translateX(0); }
+        }
+        @keyframes bounceInFromLeft {
+            0% { opacity: 0; transform: translateX(-100%); }
+            60% { opacity: 1; transform: translateX(10%); }
+            100% { transform: translateX(0); }
+        }
+
+        .internship-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+            animation: fadeIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            opacity: 0;
+            border: 1px solid #e2e8f0;
+        }
+
+        .internship-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+
+        /* Bouncy button and card styles */
+        .interactive-btn {
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background-color 0.2s ease;
+        }
+        .interactive-btn:hover {
+            transform: scale(1.03);
+            box-shadow: 0 4px 20px 0 var(--shadow-primary);
+        }
+        .interactive-btn:active {
+            transform: scale(0.97);
+        }
+        
+        /* Sort button styles */
+        .sort-btn {
+            transition: all 0.2s ease;
+        }
+        .sort-btn:not(.active):hover {
+            transform: translateY(-2px);
+            background-color: var(--color-accent);
+            color: var(--color-primary);
+        }
+        .sort-btn.active {
+            background-color: var(--color-primary);
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 2px 10px var(--shadow-primary);
+        }
+
+        /* Generic selection interaction */
+        .selectable-card {
+            position: relative;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        
+        .peer:not(:checked) + .selectable-card:hover {
+            transform: translateY(-4px) scale(1.02);
+            border-color: var(--color-accent);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+        }
+
+        .peer:checked + .selectable-card, .peer[type=radio]:checked + .selectable-card {
+            transform: scale(1.08);
+            border-color: var(--color-check);
+            box-shadow: 0 0 0 2px var(--color-check-light), 0 4px 12px var(--shadow-check);
+        }
+
+        /* Checkmark for selected cards */
+        .checkmark {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            background-color: var(--color-check);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .peer:checked + .selectable-card .checkmark {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Skill tags */
+        .skill-tag {
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .skill-card-name {
+             margin-bottom: 20px; /* Space for the tag */
+        }
+
+
+        /* Confetti styles */
+        .confetti-container {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; overflow: hidden; z-index: 50;
+        }
+        .confetti {
+            position: absolute; width: 8px; height: 16px;
+            background: #f00; opacity: 0;
+            animation: confetti-fall 4s ease-out forwards;
+        }
+        @keyframes confetti-fall {
+            0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+        }
+        
+        /* Loading text animation */
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        #loading-text::after {
+            content: '.';
+            animation: dots 1.5s steps(3, end) infinite;
+        }
+
+        /* Modal styles */
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .themed-title {
+            background-image: linear-gradient(to right, var(--color-primary-from), var(--color-primary-to));
+        }
+        .btn-primary {
+            background-image: linear-gradient(to right, var(--color-primary-from), var(--color-primary-to));
+        }
+        .btn-primary:hover {
+            background-image: linear-gradient(to right, var(--color-primary-from), var(--color-primary-to));
+        }
+        .icon-primary {
+            color: var(--color-primary);
+        }
+        
+        /* Progress bar */
+        .progress-bar-bg {
+            background-color: #eef2ff;
+        }
+        .progress-bar-fill {
+            background-color: var(--color-primary);
+            transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* --- START OF CHATBOT STYLES --- */
+        #chat-bubble { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            background: var(--color-primary);
+            color: white; 
+            border-radius: 50%; 
+            width: 60px; 
+            height: 60px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+            font-size: 26px; 
+            transition: transform 0.2s ease; 
+            z-index: 1000;
+        }
+        #chat-bubble:hover { 
+            transform: scale(1.1); 
+        }
+        #chat-window { 
+            position: fixed; 
+            bottom: 90px; 
+            right: 20px; 
+            width: 340px; 
+            max-height: 500px; 
+            background: white; 
+            border-radius: 16px; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 6px 18px rgba(0,0,0,0.3); 
+            overflow: hidden; 
+            animation: fadeIn 0.3s ease; 
+            font-family: 'Inter', sans-serif;
+            z-index: 1000;
+        }
+        #chat-window.hidden { 
+            display: none; 
+        }
+        #chat-header { 
+            background: var(--color-primary);
+            color: white; 
+            padding: 12px; 
+            font-weight: bold; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            font-size: 15px; 
+        }
+        #chat-header button { 
+            background:none; 
+            border:none; 
+            color:white; 
+            font-size:16px; 
+            cursor:pointer; 
+        }
+        #language-select { 
+            width: 100%; 
+            padding: 10px; 
+            border: none; 
+            border-bottom: 1px solid #eee; 
+            font-size: 14px; 
+            outline: none; 
+        }
+        #chat-messages { 
+            flex: 1; 
+            padding: 15px; 
+            overflow-y: auto; 
+            background: #f8fafc;
+            scroll-behavior: smooth; 
+        }
+        .chat-message { 
+            margin: 8px 0; 
+            padding: 10px 14px; 
+            border-radius: 18px; 
+            max-width: 80%; 
+            word-wrap: break-word; 
+            font-size: 14px; 
+            line-height: 1.4; 
+            animation: fadeInUp 0.3s ease; 
+        }
+        .chat-message.user { 
+            background: var(--color-primary);
+            color: white; 
+            margin-left: auto; 
+            border-bottom-right-radius: 4px; 
+        }
+        .chat-message.bot { 
+            background: #eef2ff;
+            color: #1f2937;
+            margin-right: auto; 
+            border-bottom-left-radius: 4px; 
+        }
+        #chat-form { 
+            display: flex; 
+            border-top: 1px solid #ddd; 
+            background: #fff; 
+        }
+        #chat-input { 
+            flex: 1; 
+            border: none; 
+            padding: 12px; 
+            font-size: 14px; 
+            outline: none; 
+            border-radius: 0 0 0 16px; 
+        }
+        #chat-form button { 
+            background: var(--color-primary); 
+            color: white; 
+            border: none; 
+            padding: 0 18px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            border-radius: 0 0 16px 0; 
+            transition: background 0.2s ease; 
+        }
+        #chat-form button:hover { 
+            background: var(--color-primary-hover);
+        }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px);} 
+            to { opacity: 1; transform: translateY(0);} 
+        }
+        @keyframes fadeInUp { 
+            from { opacity: 0; transform: translateY(8px);} 
+            to { opacity: 1; transform: translateY(0);} 
+        }
+        /* --- END OF CHATBOT STYLES --- */
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div id="confetti-container"></div>
+
+    <!-- Main Container -->
+    <div class="container mx-auto max-w-3xl p-4 sm:p-6 md:p-8">
+
+        <!-- Header -->
+        <header class="text-center mb-8 relative">
+            <div class="absolute top-0 right-0">
+                <div class="relative inline-flex items-center">
+                    <i class="ph ph-translate text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"></i>
+                    <select id="language-selector" class="appearance-none bg-white border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none block w-full p-2 pl-9 pr-8 transition">
+                        <option value="en">English</option>
+                        <option value="hi">हिन्दी</option>
+                        <option value="bn">বাংলা</option>
+                        <option value="ta">தமிழ்</option>
+                        <option value="te">తెలుగు</option>
+                        <option value="or">ଓଡ଼ିଆ</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700">
+                        <i class="ph ph-caret-down"></i>
+                    </div>
+                </div>
+            </div>
+            <h1 class="themed-title text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text">AtlasIntern</h1>
+            <p class="text-slate-500 mt-2">
+                <span id="welcome-greeting"></span> 
+                <span data-translate-key="tagline">Your Smart Internship Navigator.</span>
+            </p>
+            <div class="mt-4 flex justify-center items-center space-x-4">
+                <label for="resume-file" class="cursor-pointer text-sm font-semibold text-purple-600 hover:text-purple-800 transition-transform duration-200 transform hover:-translate-y-px">
+                    <i class="ph ph-file-arrow-up mr-1"></i>
+                    <span data-translate-key="upload_resume">Upload Resume</span>
+                </label>
+                <input type="file" id="resume-file" accept=".pdf" class="hidden">
+
+                <span class="text-slate-300">|</span>
+
+                <button id="linkedin-btn" class="cursor-pointer text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-transform duration-200 transform hover:-translate-y-px">
+                    <i class="ph-fill ph-linkedin-logo mr-1"></i>
+                    <span data-translate-key="analyze_linkedin">Analyze with LinkedIn</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main application container -->
+        <main id="app-container" class="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200/50 relative min-h-[500px]">
+            
+            <!-- Progress Bar -->
+             <div id="progress-bar-container" class="w-full progress-bar-bg rounded-full h-2.5 mb-8">
+                <div id="progress-bar" class="progress-bar-fill h-2.5 rounded-full" style="width: 25%"></div>
+            </div>
+            
+            <!-- Wizard Form -->
+            <form id="wizard-form">
+                <div class="wizard-steps-container" style="min-height: 320px;">
+                    <!-- Step 1: Education -->
+                    <div id="step-1" class="wizard-step active-forward">
+                        <h2 class="text-xl font-semibold mb-4 text-center" data-translate-key="step1_title">First, what's your education level?</h2>
+                        <div id="education-container" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            <!-- Education options will be dynamically inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Step 2: Skills -->
+                    <div id="step-2" class="wizard-step">
+                         <h2 class="text-xl font-semibold mb-4 text-center" data-translate-key="step2_title">What are your top skills?</h2>
+                         <div id="skill-sort-controls" class="flex flex-wrap justify-center items-center gap-2 mb-6 bg-slate-100 p-1 rounded-full">
+                            <span class="text-xs font-medium text-slate-600 mr-2" data-translate-key="sort_skills_by">Sort by:</span>
+                            <button type="button" data-sort="alpha" class="sort-btn active font-semibold py-1 px-3 rounded-full text-xs">A-Z</button>
+                            <button type="button" data-sort="trending" class="sort-btn font-semibold py-1 px-3 rounded-full text-xs" data-translate-key="sort_trending">Trending</button>
+                            <button type="button" data-sort="highestPaid" class="sort-btn font-semibold py-1 px-3 rounded-full text-xs" data-translate-key="sort_highest_paid">Highest Paid</button>
+                            <button type="button" data-sort="future" class="sort-btn font-semibold py-1 px-3 rounded-full text-xs" data-translate-key="sort_future">Future</button>
+                         </div>
+                         <div id="skills-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            <!-- Skills will be dynamically inserted here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Step 3: Interests -->
+                    <div id="step-3" class="wizard-step">
+                         <h2 class="text-xl font-semibold mb-4 text-center" data-translate-key="step3_title">What fields interest you?</h2>
+                         <div id="interests-container" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            <!-- Interests will be dynamically inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Location -->
+                    <div id="step-4" class="wizard-step">
+                        <h2 class="text-xl font-semibold mb-4 text-center" data-translate-key="step4_title">Finally, any location preferences?</h2>
+                        <div class="max-w-md mx-auto space-y-4">
+                            <div class="relative">
+                                <select id="location" name="location" class="appearance-none bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-none block w-full p-3 pr-8 transition">
+                                    <!-- Locations will be dynamically populated -->
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700">
+                                    <i class="ph ph-caret-down"></i>
+                                </div>
+                            </div>
+                             <div class="flex items-center justify-center">
+                                <input id="remote" name="remote" type="checkbox" class="w-4 h-4 text-indigo-600 bg-slate-100 border-slate-300 rounded focus:ring-indigo-500">
+                                <label for="remote" class="ml-2 text-sm font-medium text-slate-900" data-translate-key="remote_option">I'm open to remote / work-from-home</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+             <!-- Navigation Buttons -->
+            <div id="navigation-section" class="absolute bottom-6 right-6 left-6 mt-12 pt-6 border-t border-slate-200">
+                <div class="flex justify-between items-center">
+                    <button id="prev-btn" class="interactive-btn bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-300 transition-colors" data-translate-key="prev_btn">Previous</button>
+                    <button id="next-btn" class="interactive-btn btn-primary text-white font-bold py-2 px-5 rounded-lg transition-colors flex items-center justify-center">
+                        <span class="btn-text" data-translate-key="next_btn">Next</span><i class="ph ph-arrow-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading Section: Shown while processing -->
+            <div id="loading-section" class="text-center py-16 hidden">
+                 <div class="inline-block w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full spinner"></div>
+                 <p id="loading-text" data-translate-key="loading_text" class="text-lg font-semibold mt-4 text-slate-600">Finding internships</p>
+            </div>
+
+            <!-- Results Section: Displays the recommendations -->
+            <div id="results-section" class="hidden">
+                <h2 class="text-2xl sm:text-3xl font-bold text-center mb-6" data-translate-key="results_title">Your Top Recommendations</h2>
+                <div id="sort-controls" class="flex justify-center items-center space-x-2 mb-8 bg-slate-100 p-1 rounded-full">
+                    <span class="text-sm font-medium text-slate-600 mr-2" data-translate-key="sort_by">Sort by:</span>
+                    <button data-sort="matchPercentage" class="sort-btn active font-semibold py-1.5 px-4 rounded-full text-sm">
+                        <span data-translate-key="sort_match">Match %</span>
+                    </button>
+                    <button data-sort="stipend" class="sort-btn font-semibold py-1.5 px-4 rounded-full text-sm">
+                        <span data-translate-key="sort_stipend">Stipend</span>
+                    </button>
+                    <button data-sort="location" class="sort-btn font-semibold py-1.5 px-4 rounded-full text-sm">
+                        <span data-translate-key="sort_location">Location</span>
+                    </button>
+                </div>
+                <div id="recommendations-container" class="space-y-6">
+                    <!-- Recommendation cards will be inserted here -->
+                </div>
+
+                <!-- Skill Gap Analysis Section -->
+                <div id="skill-gap-section" class="mt-10 text-center">
+                    <button id="analyze-gap-btn" class="interactive-btn bg-indigo-100 text-indigo-700 font-bold py-3 px-6 rounded-lg hover:bg-indigo-200 transition-colors">
+                        <i class="ph ph-arrows-split mr-2"></i>Analyze Your Skill Gaps
+                    </button>
+                    <div id="skill-gap-results" class="hidden mt-6 p-6 bg-slate-50 rounded-xl border border-slate-200">
+                        <!-- Analysis will be injected here by JS -->
+                    </div>
+                </div>
+
+                <div class="text-center mt-8">
+                    <button onclick="startOver()" class="interactive-btn bg-slate-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-slate-700 transition-colors">
+                        <i class="ph ph-arrow-counter-clockwise mr-2"></i><span data-translate-key="start_over_btn">Start Over</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- LinkedIn Modal -->
+    <div id="linkedin-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50 hidden modal-overlay opacity-0">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 sm:p-8 modal-content transform scale-95">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold" data-translate-key="linkedin_modal_title">Analyze LinkedIn Profile</h3>
+                <button id="close-modal-btn" class="text-slate-400 hover:text-slate-600">
+                    <i class="ph-fill ph-x-circle text-3xl"></i>
+                </button>
+            </div>
+            <form id="linkedin-form">
+                <div class="space-y-4">
+                    <label for="linkedin-url" class="block text-sm font-medium text-slate-700" data-translate-key="linkedin_modal_label">Paste your LinkedIn profile URL</label>
+                    <input type="url" id="linkedin-url" name="linkedin-url" class="block w-full border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-3" placeholder="https://www.linkedin.com/in/your-profile" required>
+                </div>
+                <div class="mt-8">
+                    <button type="submit" class="interactive-btn btn-primary text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center text-lg">
+                         <i class="ph-fill ph-magic-wand mr-2"></i>
+                         <span data-translate-key="linkedin_modal_submit">Analyze Profile</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Chat Bubble -->
+    <div id="chat-bubble">💬</div>
+
+    <!-- Chat Window -->
+    <div id="chat-window" class="hidden">
+        <div id="chat-header">
+            Atlas Career Coach
+            <button id="close-chat-btn">✖</button>
+        </div>
+        <div id="chat-messages"></div>
+        <form id="chat-form">
+            <input type="text" id="chat-input" placeholder="Ask for career advice...">
+            <button type="submit">➤</button>
+        </form>
+    </div>
+
+<script>
+// --- START OF BACKEND SIMULATION & DATA ---
+
+// This static DB is now a fallback or supplement to the live web search
+const internshipsDB = [
+    { id: 1, source: 'PM Portal', title: 'Public Policy Research Intern', company: 'NITI Aayog', location: 'Delhi', stipend: 10000, duration: 3, requiredQualification: 'Post Graduate', requiredStream: 'Arts', criticalSkills: ['Research'], preferredSkills: ['MS Office', 'Communication'], sector: 'Government', link: 'https://www.niti.gov.in/career/internship', applyLink: 'https://www.niti.gov.in/career/internship/application-form' },
+    { id: 2, source: 'PM Portal', title: 'Software Development Engineer Intern', company: 'Tata Consultancy Services (TCS)', location: 'Bengaluru', stipend: 30000, duration: 6, requiredQualification: 'Graduate', requiredStream: 'Engineering', criticalSkills: ['Python', 'Databases'], preferredSkills: ['JavaScript'], sector: 'IT', link: 'https://www.tcs.com/careers/india/tcs-digital-hiring', applyLink: 'https://www.tcs.com/careers/india/tcs-digital-hiring-application' },
+    { id: 3, source: 'PM Portal', title: 'Digital Marketing Intern', company: 'Zomato', location: 'Remote', stipend: 15000, duration: 4, requiredQualification: 'Graduate', requiredStream: 'Any', criticalSkills: ['Social Media Marketing'], preferredSkills: ['Canva', 'Content Writing'], sector: 'Marketing', link: 'https://www.zomato.com/careers', applyLink: 'https://www.zomato.com/careers/apply/digital-marketing-intern' },
+];
+
+const externalInternshipsDB = [
+    { id: 101, source: 'External', title: 'React Developer Intern', company: 'InnovateTech (via LinkedIn)', location: 'Remote', stipend: 18000, duration: 3, requiredQualification: 'Graduate', requiredStream: 'Engineering', criticalSkills: ['JavaScript', 'React.js'], preferredSkills: ['HTML/CSS'], sector: 'IT', link: 'https://www.linkedin.com/jobs/', applyLink: 'https://www.linkedin.com/jobs/view/12345678' },
+    { id: 102, source: 'External', title: 'Social Media Manager', company: 'GrowthHackers (via Internshala)', location: 'Mumbai', stipend: 10000, duration: 6, requiredQualification: 'Graduate', requiredStream: 'Any', criticalSkills: ['Social Media Marketing'], preferredSkills: ['Content Writing'], sector: 'Marketing', link: 'https://internshala.com/', applyLink: 'https://internshala.com/internship/details/social-media-marketing-internship-in-mumbai-at-growthhackers163067' },
+];
+
+// --- TRANSLATION DATA ---
+const translations = {
+    en: {
+        tagline: "Your Smart Internship Navigator.",
+        upload_resume: "Upload Resume",
+        analyze_linkedin: "Analyze with LinkedIn",
+        linkedin_modal_title: "Analyze LinkedIn Profile",
+        linkedin_modal_label: "Paste your LinkedIn profile URL",
+        linkedin_modal_submit: "Analyze Profile",
+        analyzing_linkedin: "Analyzing LinkedIn Profile",
+        step1_title: "First, what's your education level?",
+        step2_title: "What are your top skills?",
+        step3_title: "What fields interest you?",
+        step4_title: "Finally, any location preferences?",
+        remote_option: "I'm open to remote / work-from-home",
+        prev_btn: "Previous",
+        next_btn: "Next",
+        find_btn: "Find Internships",
+        loading_text: "Searching the web for internships",
+        results_title: "Your Top Recommendations",
+        start_over_btn: "Start Over",
+        any_location: "Any Location",
+        pm_portal: "PM Portal",
+        external: "External",
+        match: "MATCH",
+        months: "Months",
+        stipend_month: "/month",
+        match_highlights: "Match Highlights:",
+        learn_more: "Learn More",
+        direct_apply: "Direct Apply",
+        no_matches_title: "No Close Matches Found",
+        no_matches_desc: "We couldn't find any internships that match your specific profile at the moment. Please check back later or try adjusting your selections.",
+        best_fit_message: "We couldn't find a perfect match, but here are the closest opportunities available.",
+        reason_remote: "Remote",
+        reason_location: "Location",
+        reason_nearby: "Nearby City",
+        reason_qualification: "Qualification",
+        reason_skills: "Skills",
+        reason_interest: "Interest",
+        sort_by: "Sort by:",
+        sort_match: "Match %",
+        sort_stipend: "Stipend",
+        sort_location: "Location",
+        sort_skills_by: "Sort skills by:",
+        sort_trending: "Trending",
+        sort_highest_paid: "Highest Paid",
+        sort_future: "Future",
+    },
+    hi: {
+        tagline: "आपका स्मार्ट इंटर्नशिप नेविगेटर।",
+        upload_resume: "बायोडाटा अपलोड करें",
+        analyze_linkedin: "लिंक्डइन के साथ विश्लेषण करें",
+        linkedin_modal_title: "लिंक्डइन प्रोफाइल का विश्लेषण करें",
+        linkedin_modal_label: "अपना लिंक्डइन प्रोफाइल यूआरएल पेस्ट करें",
+        linkedin_modal_submit: "प्रोफ़ाइल का विश्लेषण करें",
+        analyzing_linkedin: "लिंक्डइन प्रोफाइल का विश्लेषण किया जा रहा है",
+        step1_title: "सबसे पहले, आपकी शिक्षा का स्तर क्या है?",
+        step2_title: "आपके शीर्ष कौशल क्या हैं?",
+        step3_title: "आपको किन क्षेत्रों में रुचि है?",
+        step4_title: "अंत में, कोई स्थान वरीयता?",
+        remote_option: "मैं रिमोट / घर से काम करने के लिए तैयार हूँ",
+        prev_btn: "पिछला",
+        next_btn: "अगला",
+        find_btn: "इंटर्नशिप खोजें",
+        loading_text: "इंटर्नशिप खोजा जा रहा है",
+        results_title: "आपके लिए शीर्ष सुझाव",
+        start_over_btn: "फिर से शुरू करें",
+        any_location: "कोई भी स्थान",
+        pm_portal: "पीएम पोर्टल",
+        external: "बाहरी",
+        match: "मैच",
+        months: "महीने",
+        stipend_month: "/माह",
+        match_highlights: "मैच की मुख्य विशेषताएं:",
+        learn_more: "और जानें",
+        direct_apply: "सीधे आवेदन करें",
+        no_matches_title: "कोई करीबी मैच नहीं मिला",
+        no_matches_desc: "हमें इस समय आपकी प्रोफ़ाइल से मेल खाने वाली कोई इंटर्नशिप नहीं मिली। कृपया बाद में फिर से देखें या अपने चयन को समायोजित करने का प्रयास करें।",
+        best_fit_message: "हमें कोई सटीक मिलान नहीं मिला, लेकिन यहां उपलब्ध सबसे करीबी अवसर हैं।",
+        reason_remote: "रिमोट",
+        reason_location: "स्थान",
+        reason_nearby: "आस-पास का शहर",
+        reason_qualification: "योग्यता",
+        reason_skills: "कौशल",
+        reason_interest: "रुचि",
+        sort_by: "इसके अनुसार क्रमबद्ध करें:",
+        sort_match: "मैच %",
+        sort_stipend: "वजीफा",
+        sort_location: "स्थान",
+        sort_skills_by: "कौशल क्रमबद्ध करें:",
+        sort_trending: "ट्रेंडिंग",
+        sort_highest_paid: "उच्चतम भुगतान",
+        sort_future: "भविष्य",
+    },
+    bn: {
+        tagline: "আপনার স্মার্ট ইন্টার্নশিপ নেভিগেটর।",
+        upload_resume: "জীবনবৃত্তান্ত আপলোড করুন",
+        analyze_linkedin: "লিঙ্কডইন দিয়ে বিশ্লেষণ করুন",
+        linkedin_modal_title: "লিঙ্কডইন প্রোফাইল বিশ্লেষণ করুন",
+        linkedin_modal_label: "আপনার লিঙ্কডইন প্রোফাইল URL পেস্ট করুন",
+        linkedin_modal_submit: "প্রোফাইল বিশ্লেষণ করুন",
+        analyzing_linkedin: "লিঙ্কডইন প্রোফাইল বিশ্লেষণ করা হচ্ছে",
+        step1_title: "প্রথমে, আপনার শিক্ষাগত যোগ্যতা কী?",
+        step2_title: "আপনার শীর্ষ দক্ষতা কি?",
+        step3_title: "কোন ক্ষেত্রে আপনার আগ্রহ আছে?",
+        step4_title: "অবশেষে, কোন স্থানের পছন্দ আছে?",
+        remote_option: "আমি দূরবর্তী / বাড়ি থেকে কাজ করতে আগ্রহী",
+        prev_btn: "পূর্ববর্তী",
+        next_btn: "পরবর্তী",
+        find_btn: "ইন্টার্নশিপ খুঁজুন",
+        loading_text: "ইন্টার্নশিপ খোঁজা হচ্ছে",
+        results_title: "আপনার জন্য শীর্ষ সুপারিশ",
+        start_over_btn: "আবার শুরু করুন",
+        any_location: "যেকোনো স্থান",
+        pm_portal: "পিএম পোর্টাল",
+        external: "বাহ্যিক",
+        match: "ম্যাচ",
+        months: "মাস",
+        stipend_month: "/মাস",
+        match_highlights: "ম্যাচের হাইলাইটস:",
+        learn_more: "আরও জানুন",
+        direct_apply: "সরাসরি আবেদন করুন",
+        no_matches_title: "কাছাকাছি কোনো মিল পাওয়া যায়নি",
+        no_matches_desc: "এই মুহূর্তে আপনার প্রোফাইলের সাথে মেলে এমন কোনো ইন্টার্নশিপ আমরা খুঁজে পাইনি। অনুগ্রহ করে পরে আবার দেখুন বা আপনার নির্বাচন সামঞ্জস্য করার চেষ্টা করুন।",
+        best_fit_message: "আমরা একটি নিখুঁত মিল খুঁজে পাইনি, তবে এখানে সবচেয়ে কাছের সুযোগগুলি উপলব্ধ রয়েছে।",
+        reason_remote: "দূরবর্তী",
+        reason_location: "অবস্থান",
+        reason_nearby: "কাছাকাছি শহর",
+        reason_qualification: "যোগ্যতা",
+        reason_skills: "দক্ষতা",
+        reason_interest: "আগ্রহ",
+        sort_by: "সাজান:",
+        sort_match: "ম্যাচ %",
+        sort_stipend: "স্টাইপেন্ড",
+        sort_location: "অবস্থান",
+        sort_skills_by: "দক্ষতা সাজান:",
+        sort_trending: "ট্রেন্ডিং",
+        sort_highest_paid: "সর্বাধিক বেতন",
+        sort_future: "ভবিষ্যৎ",
+    },
+    ta: {
+        tagline: "உங்கள் ஸ்மார்ட் இன்டர்ன்ஷிப் நேவிகேட்டர்.",
+        upload_resume: "ரெஸ்யூம் பதிவேற்றவும்",
+        analyze_linkedin: "லிங்க்ட்இன் மூலம் பகுப்பாய்வு செய்யவும்",
+        linkedin_modal_title: "லிங்க்ட்இன் சுயவிவரத்தை பகுப்பாய்வு செய்யவும்",
+        linkedin_modal_label: "உங்கள் லிங்க்ட்இன் சுயவிவர URLஐ ஒட்டவும்",
+        linkedin_modal_submit: "சுயவிவரத்தை பகுப்பாய்வு செய்யவும்",
+        analyzing_linkedin: "லிங்க்ட்இன் சுயவிவரம் பகுப்பாய்வு செய்யப்படுகிறது",
+        step1_title: "முதலில், உங்கள் கல்வி நிலை என்ன?",
+        step2_title: "உங்கள் சிறந்த திறமைகள் என்ன?",
+        step3_title: "எந்தத் துறைகளில் உங்களுக்கு ஆர்வம்?",
+        step4_title: "இறுதியாக, ஏதேனும் இட விருப்பத்தேர்வுகள்?",
+        remote_option: "நான் ரிமோட் / வீட்டிலிருந்து வேலை செய்யத் தயாராக உள்ளேன்",
+        prev_btn: "முந்தையது",
+        next_btn: "அடுத்தது",
+        find_btn: "இன்டர்ன்ஷிப் கண்டுபிடிக்கவும்",
+        loading_text: "இன்டர்ன்ஷிப் தேடப்படுகிறது",
+        results_title: "உங்கள் சிறந்த பரிந்துரைகள்",
+        start_over_btn: "மீண்டும் தொடங்கவும்",
+        any_location: "எந்த இடமும்",
+        pm_portal: "பிஎம் போர்டல்",
+        external: "வெளி",
+        match: "பொருத்தம்",
+        months: "மாதங்கள்",
+        stipend_month: "/மாதம்",
+        match_highlights: "பொருத்தத்தின் சிறப்பம்சங்கள்:",
+        learn_more: "மேலும் அறிக",
+        direct_apply: "நேரடியாக விண்ணப்பிக்கவும்",
+        no_matches_title: "நெருங்கிய பொருத்தங்கள் எதுவும் இல்லை",
+        no_matches_desc: "உங்கள் சுயவிவரத்துடன் பொருந்தக்கூடிய எந்த இன்டர்ன்ஷிப்பையும் எங்களால் கண்டுபிடிக்க முடியவில்லை. தயவுசெய்து பின்னர் சரிபார்க்கவும் அல்லது உங்கள் தேர்வுகளை சரிசெய்ய முயற்சிக்கவும்.",
+        best_fit_message: "எங்களால் சரியான பொருத்தத்தைக் கண்டுபிடிக்க முடியவில்லை, ஆனால் இங்கே கிடைக்கக்கூடிய நெருங்கிய வாய்ப்புகள் உள்ளன.",
+        reason_remote: "தொலைநிலை",
+        reason_location: "இடம்",
+        reason_nearby: "அருகிலுள்ள நகரம்",
+        reason_qualification: "தகுதி",
+        reason_skills: "திறன்கள்",
+        reason_interest: "ஆர்வம்",
+        sort_by: "வரிசைப்படுத்து:",
+        sort_match: "பொருத்தம் %",
+        sort_stipend: "ஊக்கத்தொகை",
+        sort_location: "இடம்",
+        sort_skills_by: "திறன்களை வரிசைப்படுத்து:",
+        sort_trending: "பிரபலம்",
+        sort_highest_paid: "அதிக சம்பளம்",
+        sort_future: "எதிர்காலம்",
+    },
+    te: {
+        tagline: "మీ స్మార్ట్ ఇంటర్న్‌షిప్ నావిగేటర్.",
+        upload_resume: "రెజ్యూమ్ అప్‌లోడ్ చేయండి",
+        analyze_linkedin: "లింక్డ్‌ఇన్‌తో విశ్లేషించండి",
+        linkedin_modal_title: "లింక్డ్‌ఇన్ ప్రొఫైల్‌ను విశ్లేషించండి",
+        linkedin_modal_label: "మీ లింక్డ్‌ఇన్ ప్రొఫైల్ URLను అతికించండి",
+        linkedin_modal_submit: "ప్రొఫైల్‌ను విశ్లేషించండి",
+        analyzing_linkedin: "లింక్డ్‌ఇన్ ప్రొఫైల్ విశ్లేషించబడుతోంది",
+        step1_title: "మొదట, మీ విద్యా స్థాయి ఏమిటి?",
+        step2_title: "మీ అగ్ర నైపుణ్యాలు ఏమిటి?",
+        step3_title: "మీకు ఏ రంగాలపై ఆసక్తి ఉంది?",
+        step4_title: "చివరగా, ఏవైనా స్థాన ప్రాధాన్యతలు ఉన్నాయా?",
+        remote_option: "నేను రిమోట్ / ఇంటి నుండి పని చేయడానికి సిద్ధంగా ఉన్నాను",
+        prev_btn: "మునుపటిది",
+        next_btn: "తరువాత",
+        find_btn: "ఇంటర్న్‌షిప్‌లను కనుగొనండి",
+        loading_text: "ఇంటర్న్‌షిప్‌ల కోసం వెతుకుతోంది",
+        results_title: "మీ అగ్ర సిఫార్సులు",
+        start_over_btn: "మళ్లీ ప్రారంభించు",
+        any_location: "ఏదైనా ప్రదేశం",
+        pm_portal: "పీఎమ్ పోర్టల్",
+        external: "బాహ్య",
+        match: "సరిపోలిక",
+        months: "నెలలు",
+        stipend_month: "/నెల",
+        match_highlights: "సరిపోలిక ముఖ్యాంశాలు:",
+        learn_more: "మరింత తెలుసుకోండი",
+        direct_apply: "నేరుగా దరఖాస్తు చేసుకోండి",
+        no_matches_title: "దగ్గరి సరిపోలికలు కనుగొనబడలేదు",
+        no_matches_desc: "ప్రస్తుతానికి మీ ప్రొఫైల్‌కు సరిపోయే ఇంటర్న్‌షిప్‌లను మేము కనుగొనలేకపోయాము. దయచేసి తర్వాత మళ్లీ తనిఖీ చేయండి లేదా మీ ఎంపికలను సర్దుబాటు చేయడానికి ప్రయత్నించండి.",
+        best_fit_message: "మేము సరైన సরిపోలికను కనుగొనలేకపోయాము, కానీ ఇక్కడ అందుబాటులో ఉన్న అత్యంత సన్నిహిత అవకాశాలు ఉన్నాయి.",
+        reason_remote: "రిమోట్",
+        reason_location: "ప్రదేశం",
+        reason_nearby: "సమీప నగరం",
+        reason_qualification: "అర్హత",
+        reason_skills: "నైపుణ్యాలు",
+        reason_interest: "ఆసక్తి",
+        sort_by: "క్రమబద్ధీకరించు:",
+        sort_match: "సరిపోలిక %",
+        sort_stipend: "స్టైఫండ్",
+        sort_location: "ప్రదేశం",
+        sort_skills_by: "నైపుణ్యాలను క్రమబద్ధీకरించండి:",
+        sort_trending: "ట్రెండింగ్",
+        sort_highest_paid: "అత్యధిక జీతం",
+        sort_future: "భవిష్యత్తు",
+    },
+    or: {
+        tagline: "ଆପଣଙ୍କ ସ୍ମାର୍ଟ ଇଣ୍ଟର୍ନସିପ୍ ନାଭିଗେଟର୍।",
+        upload_resume: "ରେଜ୍ୟୁମ୍ ଅପଲୋଡ୍ କରନ୍ତୁ",
+        analyze_linkedin: "ଲିଙ୍କଡଇନ୍ ସହିତ ବିଶ୍ଳେଷଣ କରନ୍ତୁ",
+        linkedin_modal_title: "ଲିଙ୍କଡଇନ୍ ପ୍ରୋଫାଇଲ୍ ବିଶ୍ଳେଷଣ କରନ୍ତୁ",
+        linkedin_modal_label: "ଆପଣଙ୍କ ଲିଙ୍କଡଇନ୍ ପ୍ରୋଫାଇଲ୍ URL ପେଷ୍ଟ କରନ୍ତୁ",
+        linkedin_modal_submit: "ପ୍ରୋଫାଇଲ୍ ବିଶ୍ଳେଷଣ କରନ୍ତୁ",
+        analyzing_linkedin: "ଲିଙ୍କଡଇନ୍ ପ୍ରୋଫାଇଲ୍ ବିଶ୍ଳେଷଣ କରାଯାଉଛି",
+        step1_title: "ପ୍ରଥମେ, ଆପଣଙ୍କ ଶିକ୍ଷାଗତ ସ୍ତର କ'ଣ?",
+        step2_title: "ଆପଣଙ୍କ ଶୀର୍ଷ ଦକ୍ଷତା କ'ଣ?",
+        step3_title: "କେଉଁ କ୍ଷେତ୍ରରେ ଆପଣଙ୍କର ଆଗ୍ରହ ଅଛି?",
+        step4_title: "ଶେଷରେ, କୌଣସି ସ୍ଥାନ ପସନ୍ଦ ଅଛି କି?",
+        remote_option: "ମୁଁ ରିମୋଟ୍ / ଘରୁ କାମ କରିବାକୁ ପ୍ରସ୍ତୁତ",
+        prev_btn: "ପୂର୍ବବର୍ତ୍ତୀ",
+        next_btn: "ପରବର୍ତ୍ତୀ",
+        find_btn: "ଇଣ୍ଟର୍ନସିପ୍ ଖୋଜନ୍ତୁ",
+        loading_text: "ଇଣ୍ଟର୍ନସିପ୍ ଖୋଜାଯାଉଛି",
+        results_title: "ଆପଣଙ୍କ ପାଇଁ ଶୀର୍ଷ ସୁପାରିଶ",
+        start_over_btn: "ପୁଣି ଆରମ୍ଭ କରନ୍ତୁ",
+        any_location: "ଯେକୌଣସି ସ୍ଥାନ",
+        pm_portal: "ପିଏମ୍ ପୋର୍ଟାଲ୍",
+        external: "ବାହ୍ୟ",
+        match: "ମେଳ",
+        months: "ମାସ",
+        stipend_month: "/ମାସ",
+        match_highlights: "ମେଳର ମୁଖ୍ୟାଂଶ:",
+        learn_more: "ଅଧିକ ଜାଣନ୍ତୁ",
+        direct_apply: "ସିଧାସଳଖ ଆବେଦନ କରନ୍ତୁ",
+        no_matches_title: "କୌଣସି ନିକଟତର ମେଳ ମିଳିଲା ନାହିଁ",
+        no_matches_desc: "ଆମେ ଏହି ମୁହୂର୍ତ୍ତରେ ଆପଣଙ୍କ ପ୍ରୋଫାଇଲ୍ ସହିତ ମେଳ ଖାଉଥିବା କୌଣସି ଇଣ୍ଟର୍ନସିପ୍ ପାଇଲୁ ନାହିଁ। ଦୟାକରି ପରେ ପୁଣି ଯାଞ୍ଚ କରନ୍ତୁ କିମ୍ବା ଆପଣଙ୍କ ଚୟନକୁ ସଜାଡ଼ିବାକୁ ଚେଷ୍ଟା କରନ୍ତୁ।",
+        best_fit_message: "ଆମେ ଏକ ସଠିକ୍ मेळ ପାଇଲୁ ନାହିଁ, କିନ୍ତୁ ଏଠାରେ ଉପଲବ୍ଧ ନିକଟତମ ସୁଯୋଗଗୁଡ଼ିକ ଅଛି।",
+        reason_remote: "ରିମୋଟ୍",
+        reason_location: "ସ୍ଥାନ",
+        reason_nearby: "ନିକଟବର୍ତ୍ତୀ ସହର",
+        reason_qualification: "ଯୋଗ୍ୟତା",
+        reason_skills: "ଦକ୍ଷତା",
+        reason_interest: "ଆଗ୍ରହ",
+        sort_by: "କ୍ରମ:",
+        sort_match: "ମେଳ %",
+        sort_stipend: "ଷ୍ଟାଇପେଣ୍ଡ",
+        sort_location: "ସ୍ଥାନ",
+        sort_skills_by: "କୌଶଳ କ୍ରମ:",
+        sort_trending: "ଟ୍ରେଣ୍ଡିଂ",
+        sort_highest_paid: "ସର୍ବାଧିକ ବେତନ",
+        sort_future: "ଭବିଷ୍ୟତ",
+    }
+};
+const allSkills = [
+    { name: 'MS Office' }, { name: 'MS Excel' }, { name: 'Communication' }, { name: 'Content Writing' },
+    { name: 'Social Media Marketing', tag: 'Trending Now' }, { name: 'HTML/CSS' }, { name: 'JavaScript' },
+    { name: 'Python', tag: 'Highest Paid' }, { name: 'SQL' }, { name: 'UI/UX Design', tag: 'Trending Now' },
+    { name: 'Figma' }, { name: 'Financial Modeling', tag: 'Highest Paid' }, { name: 'Databases' },
+    { name: 'React.js', tag: 'Trending Now' }, { name: 'Node.js' }, { name: 'Canva' }, { name: 'Video Editing' },
+    { name: 'Public Speaking' }, { name: 'Research' }, { name: 'Java' }, { name: 'C++' },
+    { name: 'AWS', tag: 'Highest Paid' }, { name: 'Docker' }, { name: 'Git' },
+    { name: 'Machine Learning', tag: 'Bright Future' }, { name: 'Data Analysis', tag: 'Highest Paid' },
+    { name: 'Tableau' }, { name: 'AutoCAD' }, { name: 'SEO' }, { name: 'Adobe Photoshop' },
+    { name: 'Adobe Premiere Pro' }, { name: 'Project Management' }, { name: 'Public Relations' },
+    { name: 'Market Research' }, { name: 'Leadership' },
+    { name: 'Digital Marketing', tag: 'Trending Now' },
+    { name: 'Tally' },
+    { name: 'Google Analytics', tag: 'Trending Now' },
+    { name: 'Salesforce', tag: 'Highest Paid' },
+    { name: 'MongoDB' },
+    { name: 'Cybersecurity', tag: 'Bright Future' },
+    { name: 'Blockchain', tag: 'Bright Future' },
+    { name: 'Go', tag: 'Trending Now' },
+    { name: 'Kotlin' },
+    { name: 'Swift' },
+    { name: 'TensorFlow', tag: 'Bright Future' },
+    { name: 'Kubernetes', tag: 'Highest Paid' }
+];
+
+const allInterests = [{ name: 'IT', icon: 'ph-code', keywords: ['software', 'developer', 'it', 'tech', 'engineering'] }, { name: 'Marketing', icon: 'ph-megaphone-simple', keywords: ['marketing', 'social media', 'seo'] }, { name: 'Finance', icon: 'ph-chart-line-up', keywords: ['finance', 'accounts', 'investment', 'commerce'] }, { name: 'HR', icon: 'ph-users-three', keywords: ['hr', 'human resources', 'recruitment'] }, { name: 'Business', icon: 'ph-briefcase', keywords: ['business', 'sales', 'management'] }, { name: 'Design', icon: 'ph-paint-brush', keywords: ['design', 'ui/ux', 'figma'] }, { name: 'Media', icon: 'ph-newspaper', keywords: ['media', 'content', 'writing'] }, { name: 'Operations', icon: 'ph-stack', keywords: ['operations', 'supply chain', 'logistics'] }, { name: 'Government', icon: 'ph-bank', keywords: ['government', 'policy', 'arts'] }];
+const allLocations = ["Any", "Maheshtala", "Kolkata", "Delhi", "Mumbai", "Bengaluru", "Chennai", "Hyderabad", "Pune", "Ahmedabad", "Jaipur"];
+const educationOptions = [
+    { qualification: 'Graduate', stream: 'Engineering', icon: 'ph-desktop-tower' },
+    { qualification: 'Graduate', stream: 'Commerce', icon: 'ph-briefcase' },
+    { qualification: 'Graduate', stream: 'Science', icon: 'ph-atom' },
+    { qualification: 'Post Graduate', stream: 'Any', icon: 'ph-graduation-cap' },
+    { qualification: 'Diploma', stream: 'Any', icon: 'ph-file-text' },
+    { qualification: '12th Pass', stream: 'Any', icon: 'ph-student' },
+];
+const locationProximity = { Maheshtala: ["Kolkata"], Kolkata: ["Maheshtala"] };
+const qualificationHierarchy = { '12th Pass': 1, 'Diploma': 2, 'Graduate': 3, 'Post Graduate': 4 };
+const weights = { location: 50, qualification: 40, stream: 20, criticalSkills: 45, preferredSkills: 15, interests: 25 };
+
+
+// --- CORE AI & ANALYSIS LOGIC ---
+async function fetchInternshipsFromWeb(profile) {
+    const apiKey = ""; // This will be handled by the environment
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+    const systemPrompt = `You are an expert career counselor specializing in finding internships for students in India. Your task is to find relevant, recent internship postings from the web based on the user's profile. Return a list of up to 5 internships in a structured JSON format. For each internship, set the "source" field to "Web". Provide the title, company, location, a brief description, and a direct application link if available. Only return internships posted within the last 30 days. Prioritize official company career pages and reputable job boards like LinkedIn, Internshala, and Naukri.com.`;
+    
+    const userQuery = `Find internships in India for a '${profile.qualification}' candidate, preferably in the '${profile.stream}' stream. Their preferred location is '${profile.location}'${profile.remote ? ', but they are also open to remote roles' : ''}. Key skills include: ${profile.skills.join(', ')}. They are interested in the following sectors: ${profile.interests.join(', ')}.`;
+
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        tools: [{ "google_search": {} }],
+        systemInstruction: {
+            parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "ARRAY",
+                items: {
+                    type: "OBJECT",
+                    properties: {
+                        "id": { "type": "NUMBER" },
+                        "source": { "type": "STRING" },
+                        "title": { "type": "STRING" },
+                        "company": { "type": "STRING" },
+                        "location": { "type": "STRING" },
+                        "stipend": { "type": "NUMBER" },
+                        "duration": { "type": "NUMBER" },
+                        "requiredQualification": { "type": "STRING" },
+                        "requiredStream": { "type": "STRING" },
+                        "criticalSkills": { "type": "ARRAY", "items": { "type": "STRING" } },
+                        "preferredSkills": { "type": "ARRAY", "items": { "type": "STRING" } },
+                        "sector": { "type": "STRING" },
+                        "link": { "type": "STRING" },
+                        "applyLink": { "type": "STRING" }
+                    },
+                }
+            }
+        }
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
+             const jsonText = result.candidates[0].content.parts[0].text;
+             try {
+                return JSON.parse(jsonText);
+             } catch (e) {
+                console.error("Failed to parse JSON from Gemini:", e, jsonText);
+                return []; // Return empty on parsing error
+             }
+        }
+        return [];
+    } catch (error) {
+        console.error("Error fetching internships from web:", error);
+        return []; // Return empty array on network error
+    }
+}
+
+
+function analyzeResume(text) {
+    const textLower = text.toLowerCase();
+    const profile = {};
+    profile.skills = allSkills.map(s => s.name).filter(skill => textLower.includes(skill.toLowerCase()));
+    
+    const eduKeywords = [
+        { key: 'Post Graduate', terms: ['post graduate', 'master', 'm.tech', 'm.sc', 'm.a', 'mba'] },
+        { key: 'Graduate', terms: ['graduate', 'bachelor', 'b.tech', 'b.sc', 'b.a', 'bba'] },
+        { key: 'Diploma', terms: ['diploma'] }
+    ];
+    profile.qualification = eduKeywords.find(edu => edu.terms.some(term => textLower.includes(term)))?.key || '12th Pass';
+    
+    const streamKeywords = [
+        { key: 'Engineering', terms: ['engineering', 'b.tech'] },
+        { key: 'Commerce', terms: ['commerce', 'b.com', 'bba'] },
+        { key: 'Science', terms: ['science', 'b.sc'] },
+        { key: 'Arts', terms: ['arts', 'b.a'] }
+    ];
+    profile.stream = streamKeywords.find(s => s.terms.some(term => textLower.includes(term)))?.key || 'Any';
+    
+    profile.interests = allInterests.filter(i => i.keywords.some(kw => textLower.includes(kw))).map(i => i.name);
+    if(profile.interests.length === 0) profile.interests.push('Business');
+    profile.location = allLocations.find(loc => loc !== "Any" && textLower.includes(loc.toLowerCase())) || 'Any';
+    profile.remote = textLower.includes('remote');
+    return profile;
+}
+
+function simulateLinkedInScraping(url) {
+    console.log("Simulating dynamic scraping for:", url);
+    const getSeed = (str) => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash);
+    };
+    const seed = getSeed(url);
+    const randomFrom = (arr, index) => arr[index % arr.length];
+    const education = randomFrom(educationOptions, seed);
+    const numSkills = 3 + (seed % 5);
+    const selectedSkills = new Set();
+    for (let i = 0; i < numSkills; i++) selectedSkills.add(randomFrom(allSkills, seed + i * 17).name);
+    const numInterests = 1 + (seed % 3);
+    const selectedInterests = new Set();
+    for (let i = 0; i < numInterests; i++) selectedInterests.add(randomFrom(allInterests, seed + i * 23).name);
+    const location = randomFrom(allLocations.filter(l => l !== 'Any'), seed);
+    return {
+        qualification: education.qualification,
+        stream: education.stream,
+        skills: Array.from(selectedSkills),
+        interests: Array.from(selectedInterests),
+        location: location,
+        remote: (seed % 2 === 0),
+    };
+}
+
+
+async function getRecommendations(candidateProfile) {
+    const webInternships = await fetchInternshipsFromWeb(candidateProfile);
+    const allInternships = [...webInternships, ...internshipsDB, ...externalInternshipsDB];
+    
+    const uniqueInternships = allInternships.filter((internship, index, self) =>
+        internship && internship.title && internship.company && index === self.findIndex((t) => (
+            t.title === internship.title && t.company === internship.company
+        ))
+    );
+
+    const scoredInternships = uniqueInternships
+        .map(internship => calculateMatchScore(internship, candidateProfile))
+        .filter(internship => internship.score > -1);
+        
+    return scoredInternships.sort((a, b) => b.score - a.score).slice(0, 5);
+}
+
+function calculateMatchScore(internship, candidateProfile) {
+    let score = 0;
+    let maxScore = 0;
+    let reasons = [];
+
+    const safeCriticalSkills = internship.criticalSkills || [];
+    const safePreferredSkills = internship.preferredSkills || [];
+
+    maxScore += weights.location + weights.qualification + weights.interests;
+    if (internship.requiredStream && internship.requiredStream !== 'Any') maxScore += weights.stream;
+    maxScore += weights.criticalSkills + weights.preferredSkills;
+
+    if (qualificationHierarchy[candidateProfile.qualification] < qualificationHierarchy[internship.requiredQualification]) {
+        return { ...internship, score: -1, reasons: [], matchPercentage: 0 };
+    }
+    
+    let locationMatch = false;
+    if (internship.location === 'Remote' && candidateProfile.remote) {
+        score += weights.location;
+        reasons.push({ key: 'reason_remote', icon: 'ph-house' });
+        locationMatch = true;
+    } else if (candidateProfile.location === 'Any' || candidateProfile.location === internship.location) {
+        score += weights.location;
+        reasons.push({ key: 'reason_location', icon: 'ph-map-pin' });
+        locationMatch = true;
+    } else if (locationProximity[candidateProfile.location]?.includes(internship.location)) {
+        score += weights.location * 0.8;
+        reasons.push({ key: 'reason_nearby', icon: 'ph-map-trifold' });
+        locationMatch = true;
+    }
+    if (!locationMatch && !candidateProfile.remote && internship.location !== 'Remote') return { ...internship, score: -1, reasons: [], matchPercentage: 0 };
+    if (!locationMatch && internship.location !== 'Remote') {
+         // Allow remote jobs to pass through if user is open to anything
+        if (candidateProfile.location !== 'Any') {
+            return { ...internship, score: -1, reasons: [], matchPercentage: 0 };
+        }
+    }
+
+
+    if (internship.requiredQualification === candidateProfile.qualification) {
+        score += weights.qualification;
+        reasons.push({ key: 'reason_qualification', icon: 'ph-graduation-cap' });
+    }
+    if (internship.requiredStream === 'Any' || internship.requiredStream === candidateProfile.stream) {
+        score += weights.stream;
+    }
+
+    const matchedCritical = safeCriticalSkills.filter(s => candidateProfile.skills.includes(s));
+    const matchedPreferred = safePreferredSkills.filter(s => candidateProfile.skills.includes(s));
+    
+    if (safeCriticalSkills.length > 0) {
+        score += (matchedCritical.length / safeCriticalSkills.length) * weights.criticalSkills;
+    } else {
+        score += weights.criticalSkills; // No critical skills required, so full points
+    }
+
+    if (safePreferredSkills.length > 0) {
+        score += (matchedPreferred.length / safePreferredSkills.length) * weights.preferredSkills;
+    } else {
+        score += weights.preferredSkills; // No preferred skills, so full points
+    }
+
+    if (matchedCritical.length > 0 || matchedPreferred.length > 0) {
+         reasons.push({key: 'reason_skills', icon: 'ph-star'});
+    }
+
+
+    if (internship.sector && candidateProfile.interests.some(interest => interest === internship.sector)) {
+        score += weights.interests;
+        reasons.push({ key: 'reason_interest', icon: 'ph-sparkle' });
+    }
+
+    const matchPercentage = maxScore > 0 ? Math.min(Math.round((score / maxScore) * 100), 99) : 0;
+    return { ...internship, score, reasons, matchPercentage };
+}
+
+
+// --- START OF FRONTEND LOGIC ---
+let currentStep = 1;
+const totalSteps = 4;
+let currentLang = 'en';
+let currentRecommendations = [];
+let currentUserProfile = {};
+
+
+function translateUI(lang) {
+    currentLang = lang;
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-translate-key]').forEach(el => {
+        const key = el.dataset.translateKey;
+        if (translations[lang] && translations[lang][key]) {
+            el.innerText = translations[lang][key];
+        }
+    });
+    populateDynamicContent(lang);
+    updateWizardUI();
+}
+
+function populateDynamicContent(lang = 'en') {
+    const eduContainer = document.getElementById('education-container');
+    eduContainer.innerHTML = '';
+    educationOptions.forEach((edu, index) => {
+        const id = `edu-${index}`;
+        eduContainer.innerHTML += `
+            <div>
+                <input type="radio" id="${id}" name="education" value='${JSON.stringify({q: edu.qualification, s: edu.stream})}' class="hidden peer">
+                <label for="${id}" class="selectable-card flex flex-col items-center p-4 border border-slate-300 rounded-lg cursor-pointer h-full">
+                    <div class="checkmark"><i class="ph-fill ph-check text-base"></i></div>
+                    <i class="ph-fill ${edu.icon} text-3xl icon-primary mb-2"></i>
+                    <span class="text-sm font-semibold text-center">${edu.qualification === '12th Pass' ? '12th Pass' : `${edu.stream} ${edu.qualification}`}</span>
+                </label>
+            </div>`;
+    });
+
+    sortAndPopulateSkills(); 
+    
+    const interestsContainer = document.getElementById('interests-container');
+    interestsContainer.innerHTML = '';
+    allInterests.forEach(interest => {
+        const id = `interest-${interest.name.replace(/\s/g, '-')}`;
+        interestsContainer.innerHTML += `<div><input type="checkbox" id="${id}" name="interests" value="${interest.name}" class="hidden peer"><label for="${id}" class="selectable-card flex flex-col items-center p-4 border border-slate-300 rounded-lg cursor-pointer h-full"><div class="checkmark"><i class="ph-fill ph-check text-base"></i></div><i class="ph-fill ${interest.icon} text-3xl icon-primary mb-2 mx-auto"></i><span class="text-sm font-semibold text-slate-800">${interest.name}</span></label></div>`;
+    });
+    
+    const locationSelect = document.getElementById('location');
+    locationSelect.innerHTML = '';
+    allLocations.forEach(loc => {
+         locationSelect.innerHTML += `<option value="${loc}">${loc === 'Any' ? translations[lang].any_location : loc}</option>`;
+    });
+}
+
+function sortAndPopulateSkills(sortBy = 'alpha') {
+    const skillsContainer = document.getElementById('skills-container');
+    const checkedSkills = Array.from(skillsContainer.querySelectorAll('input:checked')).map(el => el.value);
+
+    let sortedSkills = [...allSkills];
+    const tagMap = {
+        highestPaid: 'Highest Paid',
+        trending: 'Trending Now',
+        future: 'Bright Future'
+    };
+
+    if (sortBy !== 'alpha') {
+        const targetTag = tagMap[sortBy];
+        sortedSkills.sort((a, b) => {
+            const aHasTag = a.tag === targetTag;
+            const bHasTag = b.tag === targetTag;
+            if (aHasTag && !bHasTag) return -1;
+            if (!aHasTag && bHasTag) return 1;
+            return a.name.localeCompare(b.name);
+        });
+    } else {
+        sortedSkills.sort((a,b) => a.name.localeCompare(b.name));
+    }
+    
+    skillsContainer.innerHTML = '';
+    sortedSkills.forEach(skill => {
+        const id = `skill-${skill.name.replace(/[\s\.]/g, '-')}`;
+        const isChecked = checkedSkills.includes(skill.name);
+        let tagHtml = '';
+        if (skill.tag) {
+            let colorClasses = '';
+            if (skill.tag === 'Trending Now') colorClasses = 'bg-blue-100 text-blue-800';
+            if (skill.tag === 'Highest Paid') colorClasses = 'bg-green-100 text-green-800';
+            if (skill.tag === 'Bright Future') colorClasses = 'bg-purple-100 text-purple-800';
+            tagHtml = `<span class="skill-tag ${colorClasses}">${skill.tag}</span>`;
+        }
+        
+        skillsContainer.innerHTML += `
+            <div>
+                <input type="checkbox" id="${id}" name="skills" value="${skill.name}" class="hidden peer" ${isChecked ? 'checked' : ''}>
+                <label for="${id}" class="selectable-card flex items-center justify-center text-center text-sm font-medium text-slate-700 p-3 border border-slate-300 rounded-lg cursor-pointer h-full">
+                    <div class="checkmark"><i class="ph-fill ph-check text-base"></i></div>
+                    <span class="skill-card-name">${skill.name}</span>
+                    ${tagHtml}
+                </label>
+            </div>`;
+    });
+}
+
+function showUI(section) {
+    ['wizard-form', 'navigation-section', 'loading-section', 'results-section'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    const sectionEl = document.getElementById(section);
+    if(sectionEl) sectionEl.style.display = 'block';
+
+    const navSection = document.getElementById('navigation-section');
+    if(section === 'wizard-form' && navSection) {
+        navSection.style.display = 'flex';
+    }
+}
+
+
+function navigate(direction) {
+    if (currentStep === 1 && direction < 0) return;
+    if (currentStep === totalSteps && direction > 0) {
+        submitManualForm();
+        return;
+    }
+    
+    if(direction > 0 && currentStep === 1 && !document.querySelector('input[name="education"]:checked')) {
+        alert('Please select your education level.');
+        return;
+    }
+    
+    const currentStepEl = document.getElementById(`step-${currentStep}`);
+    currentStepEl.classList.remove('active-forward', 'active-backward');
+    currentStep += direction;
+    const newStepEl = document.getElementById(`step-${currentStep}`);
+    newStepEl.classList.add(direction > 0 ? 'active-forward' : 'active-backward');
+    updateWizardUI();
+}
+
+function updateWizardUI() {
+    document.getElementById('prev-btn').style.visibility = currentStep > 1 ? 'visible' : 'hidden';
+    const nextBtnText = document.getElementById('next-btn').querySelector('.btn-text');
+    const nextBtnIcon = document.getElementById('next-btn').querySelector('i');
+    
+    if (currentStep === totalSteps) {
+        nextBtnText.innerText = translations[currentLang].find_btn;
+        nextBtnIcon.className = 'ph-fill ph-rocket-launch ml-2';
+    } else {
+        nextBtnText.innerText = translations[currentLang].next_btn;
+        nextBtnIcon.className = 'ph ph-arrow-right ml-2';
+    }
+    
+    const progressBar = document.getElementById('progress-bar');
+    progressBar.style.width = `${(currentStep / totalSteps) * 100}%`;
+    document.getElementById('progress-bar-container').style.display = currentStep > 0 && currentStep <= totalSteps ? 'block' : 'none';
+}
+
+async function showLoadingAndGetRecs(candidateProfile, loadingMessage) {
+    currentUserProfile = candidateProfile;
+    const message = loadingMessage || translations[currentLang].loading_text;
+    showUI('loading-section');
+    document.getElementById('loading-text').innerText = message;
+    
+    currentRecommendations = await getRecommendations(candidateProfile);
+    sortRecommendations('matchPercentage');
+    displayRecommendations(currentRecommendations);
+}
+
+function submitManualForm() {
+    const form = document.getElementById('wizard-form');
+    const formData = new FormData(form);
+    const educationValue = formData.get('education');
+    if (!educationValue) {
+        alert('Please select your education level.');
+        return;
+    }
+    const education = JSON.parse(educationValue);
+    const candidateProfile = {
+        qualification: education.q,
+        stream: education.s,
+        skills: formData.getAll('skills'),
+        interests: formData.getAll('interests'),
+        location: formData.get('location'),
+        remote: formData.get('remote') === 'on',
+    };
+    showLoadingAndGetRecs(candidateProfile);
+}
+
+function renderRecommendations(recommendations) {
+    const container = document.getElementById('recommendations-container');
+    container.innerHTML = '';
+    
+    if (recommendations.length > 0) {
+        recommendations.forEach((internship, index) => {
+            const reasonsHtml = internship.reasons.map(reason => {
+                const translatedText = translations[currentLang][reason.key] || reason.key.replace('reason_', '');
+                return `<div class="flex items-center bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full"><i class="ph-fill ${reason.icon} mr-1.5"></i> ${translatedText}</div>`;
+            }).join('');
+            
+            let sourceTag = '';
+            if (internship.source === 'PM Portal') {
+                sourceTag = `<span class="inline-flex items-center bg-green-500 text-white text-sm font-bold px-3 py-1 rounded-md shadow-sm"><i class="ph-fill ph-check-circle mr-1.5"></i>${translations[currentLang].pm_portal}</span>`;
+            } else if (internship.source === 'Web') {
+                sourceTag = `<span class="inline-flex items-center bg-sky-500 text-white text-sm font-bold px-3 py-1 rounded-md shadow-sm"><i class="ph-fill ph-globe-hemisphere-west mr-1.5"></i>Found via Web</span>`;
+            } else {
+                 sourceTag = `<span class="inline-flex items-center bg-indigo-500 text-white text-sm font-bold px-3 py-1 rounded-md shadow-sm"><i class="ph-fill ph-buildings mr-1.5"></i>${internship.source || 'External'}</span>`;
+            }
+
+            const cardBorderClass = internship.source === 'PM Portal' ? 'border-green-500' : internship.source === 'Web' ? 'border-sky-500' : 'border-indigo-500';
+
+            container.innerHTML += `
+                <div class="internship-card bg-white rounded-xl shadow-lg relative border-t-4 ${cardBorderClass}" style="animation-delay: ${index * 100}ms;">
+                    <div class="p-6">
+                        <div class="flex justify-between items-start mb-3">
+                            ${sourceTag}
+                            <div class="text-right">
+                               <div class="text-2xl font-bold text-indigo-600">${internship.matchPercentage}%</div>
+                               <div class="text-xs text-slate-500 font-semibold">${translations[currentLang].match}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-slate-800">${internship.title}</h3>
+                            <p class="text-slate-600 font-medium">${internship.company}</p>
+                        </div>
+                        <div class="flex flex-wrap items-center text-sm text-slate-500 mt-3 gap-x-4 gap-y-1">
+                            <span class="flex items-center"><i class="ph-fill ph-map-pin mr-1"></i> ${internship.location || 'N/A'}</span>
+                            <span class="flex items-center"><i class="ph-fill ph-clock mr-1"></i> ${internship.duration || 'N/A'} ${translations[currentLang].months}</span>
+                             <span class="flex items-center"><i class="ph-fill ph-currency-inr mr-1"></i> ${internship.stipend || 'N/A'}${translations[currentLang].stipend_month}</span>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-slate-200">
+                            <h4 class="font-semibold text-slate-800 mb-3 text-sm">${translations[currentLang].match_highlights}</h4>
+                            <div class="flex flex-wrap gap-2">${reasonsHtml}</div>
+                        </div>
+                        <div class="mt-6 flex justify-end items-center gap-3">
+                            <a href="${internship.link}" target="_blank" rel="noopener noreferrer" class="interactive-btn text-sm text-slate-600 font-semibold hover:text-indigo-600 transition-colors">Learn More</a>
+                            <a href="${internship.applyLink}" target="_blank" rel="noopener noreferrer" class="interactive-btn bg-green-500 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-600 transition-colors flex items-center"><i class="ph-fill ph-rocket-launch mr-2"></i>${translations[currentLang].direct_apply}</a>
+                        </div>
+                    </div>
+                </div>`;
+        });
+    }
+}
+
+
+function displayRecommendations(recommendations) {
+    const resultsSection = document.getElementById('results-section');
+    const container = document.getElementById('recommendations-container');
+    
+    const existingMessage = resultsSection.querySelector('.best-fit-message');
+    if (existingMessage) existingMessage.remove();
+
+    showUI('results-section');
+    
+    document.getElementById('sort-controls').classList.toggle('hidden', recommendations.length === 0);
+    document.getElementById('skill-gap-section').classList.toggle('hidden', recommendations.length === 0);
+
+
+    if (recommendations.length === 0) {
+        container.innerHTML = `<div class="text-center p-8 bg-slate-50 rounded-lg"><i class="ph-fill ph-magnifying-glass text-5xl text-slate-400 mb-4"></i><h3 class="text-xl font-semibold">${translations[currentLang].no_matches_title}</h3><p class="text-slate-600 mt-2">${translations[currentLang].no_matches_desc}</p></div>`;
+    } else {
+        if (recommendations[0].matchPercentage < 40) {
+            const message = `<div class="best-fit-message text-center p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-lg"><p class="text-sm text-yellow-800">${translations[currentLang].best_fit_message}</p></div>`;
+            resultsSection.querySelector('h2').insertAdjacentHTML('afterend', message);
+        }
+        
+        renderRecommendations(recommendations);
+        if (!document.body.classList.contains('results-shown-before')) {
+            launchConfetti();
+            document.body.classList.add('results-shown-before');
+        }
+    }
+}
+
+
+function sortRecommendations(sortBy) {
+    if (currentRecommendations.length === 0) return;
+
+    if (sortBy === 'matchPercentage') {
+        currentRecommendations.sort((a, b) => b.matchPercentage - a.matchPercentage);
+    } else if (sortBy === 'stipend') {
+        currentRecommendations.sort((a, b) => (b.stipend || 0) - (a.stipend || 0));
+    } else if (sortBy === 'location') {
+        currentRecommendations.sort((a, b) => (a.location || '').localeCompare(b.location || ''));
+    }
+    
+    renderRecommendations(currentRecommendations);
+}
+
+
+function startOver() {
+    showUI('wizard-form');
+    document.getElementById('wizard-form').reset();
+    document.getElementById('resume-file').value = '';
+    document.body.classList.remove('results-shown-before');
+    
+    document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active-forward', 'active-backward'));
+    currentStep = 1;
+    document.getElementById('step-1').classList.add('active-forward');
+    updateWizardUI();
+    
+    const resultsSection = document.getElementById('results-section');
+    const existingMessage = resultsSection.querySelector('.best-fit-message');
+    if (existingMessage) existingMessage.remove();
+
+    const sortButtons = document.querySelectorAll('.sort-btn');
+    sortButtons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector('.sort-btn[data-sort="matchPercentage"]').classList.add('active');
+
+    const skillGapResults = document.getElementById('skill-gap-results');
+    const analyzeGapBtn = document.getElementById('analyze-gap-btn');
+    skillGapResults.classList.add('hidden');
+    skillGapResults.innerHTML = '';
+    analyzeGapBtn.classList.remove('hidden');
+}
+
+function updateWelcomeMessage() {
+    const hour = new Date().getHours();
+    let greeting = "Welcome!";
+    if (hour < 12) greeting = "Good Morning!";
+    else if (hour < 18) greeting = "Good Afternoon!";
+    else greeting = "Good Evening!";
+    document.getElementById('welcome-greeting').innerText = greeting;
+}
+
+function launchConfetti() {
+    const container = document.getElementById('confetti-container');
+    const colors = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6'];
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.animationDelay = Math.random() * 2 + 's';
+        confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+        container.appendChild(confetti);
+    }
+    setTimeout(() => { container.innerHTML = ''; }, 6000);
+}
+
+async function handlePdfUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    try {
+        const reader = new FileReader();
+        reader.readAsArrayBuffer(file);
+        reader.onload = async (e) => {
+            const pdfData = new Uint8Array(e.target.result);
+            const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                fullText += textContent.items.map(item => item.str).join(' ');
+            }
+            const profile = analyzeResume(fullText);
+            await showLoadingAndGetRecs(profile, "Analyzing your resume...");
+        };
+    } catch (error) {
+        console.error('Error processing PDF:', error);
+        alert('Could not read the PDF file. Please try again.');
+        startOver();
+    }
+}
+
+async function handleLinkedInUrl(url) {
+    closeModal();
+    const profile = simulateLinkedInScraping(url);
+    await showLoadingAndGetRecs(profile, translations[currentLang].analyzing_linkedin);
+}
+
+function openModal() {
+    const modal = document.getElementById('linkedin-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('.modal-content').classList.remove('scale-95');
+    }, 10);
+}
+
+function closeModal() {
+    const modal = document.getElementById('linkedin-modal');
+    modal.classList.add('opacity-0');
+    modal.querySelector('.modal-content').classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+function analyzeSkillGaps() {
+    const resultsContainer = document.getElementById('skill-gap-results');
+    const analyzeBtn = document.getElementById('analyze-gap-btn');
+    
+    const userSkills = new Set(currentUserProfile.skills);
+
+    const marketSkills = new Set();
+    currentRecommendations.forEach(internship => {
+        (internship.criticalSkills || []).forEach(skill => marketSkills.add(skill));
+        (internship.preferredSkills || []).forEach(skill => marketSkills.add(skill));
+    });
+
+    const skillGap = [...marketSkills].filter(skill => !userSkills.has(skill));
+
+    const createSkillList = (skills, title, color, icon) => {
+        let listHtml = skills.map(skill => `<span class="inline-block bg-white text-slate-700 text-sm font-medium mr-2 mb-2 px-3 py-1 rounded-full border border-slate-300">${skill}</span>`).join('');
+        if (skills.length === 0) {
+            listHtml = `<p class="text-slate-500 italic">No specific skills listed.</p>`;
+        }
+        return `
+            <div>
+                <h4 class="text-lg font-semibold mb-3 text-left flex items-center ${color}">
+                    <i class="ph-fill ${icon} mr-2"></i>${title}
+                </h4>
+                <div class="text-left">${listHtml}</div>
+            </div>
+        `;
+    };
+
+    const yourSkillsHtml = createSkillList(Array.from(userSkills), 'Your Current Skills', 'text-blue-600', 'ph-user');
+    const marketSkillsHtml = createSkillList(Array.from(marketSkills), 'In-Demand Skills for You', 'text-green-600', 'ph-trend-up');
+    const gapSkillsHtml = createSkillList(skillGap, 'Your Skill Gaps to Bridge', 'text-red-600', 'ph-arrows-split');
+
+    resultsContainer.innerHTML = `
+        <h3 class="text-2xl font-bold text-center mb-6">Skill Gap Analysis</h3>
+        <div class="space-y-6">
+            ${yourSkillsHtml}
+            ${marketSkillsHtml}
+            ${gapSkillsHtml}
+        </div>
+        <div class="mt-6 pt-4 border-t border-slate-200">
+            <p class="text-sm text-slate-500">Focus on learning the skills in the "gap" list to become an even stronger candidate for these roles!</p>
+        </div>
+        <div class="mt-6 text-center">
+            <button id="get-learning-plan-btn" class="interactive-btn btn-primary text-white font-bold py-2 px-5 rounded-lg">
+                ✨ Get AI Learning Plan
+            </button>
+            <div id="learning-plan-container" class="mt-4 text-left p-4 bg-white rounded-lg border border-slate-200 hidden"></div>
+        </div>
+    `;
+
+    document.getElementById('get-learning-plan-btn').addEventListener('click', () => getAILearningPlan(Array.from(userSkills), skillGap));
+
+    analyzeBtn.classList.add('hidden');
+    resultsContainer.classList.remove('hidden');
+}
+
+async function getAILearningPlan(userSkills, skillGaps) {
+    const btn = document.getElementById('get-learning-plan-btn');
+    const container = document.getElementById('learning-plan-container');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Generating...';
+    container.classList.remove('hidden');
+    container.innerHTML = '<p class="text-slate-500 text-center">✨ Our AI is crafting a personalized learning plan for you...</p>';
+
+    const apiKey = "";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+    const systemPrompt = "You are a helpful career coach. Your goal is to provide a simple, actionable learning plan for a student looking to acquire new skills for internships. Be encouraging and provide links to free, high-quality resources.";
+    
+    const userQuery = `I am a student in India. My current skills are: ${userSkills.join(', ')}. To get a better internship, I need to learn these skills: ${skillGaps.join(', ')}. 
+    
+    Please provide a simple learning plan. For each skill I need to learn, suggest one or two free online resources like a specific YouTube playlist, a well-regarded tutorial series, or official documentation. Keep the descriptions brief. Format the output using simple markdown bullet points.`;
+
+    const payload = {
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        let planText = "Sorry, I couldn't generate a plan right now. Please try again later.";
+        if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
+            planText = result.candidates[0].content.parts[0].text;
+            // A simple way to format the markdown-like response to basic HTML
+            planText = planText
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\* (.*?)(?=\n\*|\n\n|$)/g, '<li>$1</li>')
+                .replace(/(\r\n|\n|\r)/g, '<br>');
+             planText = `<ul class="list-disc pl-5 space-y-2">${planText.replace(/<br>/g, '')}</ul>`;
+        }
+        container.innerHTML = `<h5 class="font-bold mb-2 text-lg">Your AI-Powered Learning Plan:</h5>${planText}`;
+    } catch (error) {
+        console.error("Error fetching learning plan:", error);
+        container.innerHTML = '<p class="text-red-500">An error occurred while generating your plan. Please check the console for details.</p>';
+    } finally {
+        btn.style.display = 'none'; // Hide button after use
+    }
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
+    updateWelcomeMessage();
+    populateDynamicContent('en');
+
+    document.getElementById('next-btn').addEventListener('click', () => navigate(1));
+    document.getElementById('prev-btn').addEventListener('click', () => navigate(-1));
+    document.getElementById('resume-file').addEventListener('change', handlePdfUpload);
+    document.getElementById('language-selector').addEventListener('change', (e) => translateUI(e.target.value));
+    document.getElementById('analyze-gap-btn').addEventListener('click', analyzeSkillGaps);
+
+    document.getElementById('linkedin-btn').addEventListener('click', openModal);
+    document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+    document.getElementById('linkedin-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleLinkedInUrl(e.target['linkedin-url'].value);
+    });
+    
+    const sortButtons = document.querySelectorAll('#sort-controls .sort-btn');
+    sortButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            sortButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            sortRecommendations(button.dataset.sort);
+        });
+    });
+    
+    const skillSortButtons = document.querySelectorAll('#skill-sort-controls .sort-btn');
+    skillSortButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            skillSortButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            sortAndPopulateSkills(button.dataset.sort);
+        });
+    });
+
+    updateWizardUI();
+
+    // --- CHATBOT LOGIC ---
+    const chatBubble = document.getElementById('chat-bubble');
+    const chatWindow = document.getElementById('chat-window');
+    const closeChatBtn = document.getElementById('close-chat-btn');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+
+    function appendChatMessage(content, sender = 'bot', isHTML = false) {
+        const el = document.createElement('div');
+        el.className = `chat-message ${sender}`;
+        if (isHTML) {
+            el.innerHTML = content;
+        } else {
+            el.innerText = content;
+        }
+        chatMessages.appendChild(el);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function getGeminiResponse(userText) {
+        const apiKey = "";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        const systemPrompt = `You are 'Atlas', a friendly and helpful AI internship assistant for students in India. Your goal is to provide career advice. You can answer questions about the job market, suggest skills to learn, give tips for resume writing and interview preparation. Do NOT attempt to search for jobs; the main application already does that. Instead, focus on giving advice. Keep your responses concise, helpful, and encouraging. Format responses with simple markdown (bolding, lists).`;
+
+        const payload = {
+            contents: [{ parts: [{ text: userText }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+        };
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            let botReply = "I'm having a little trouble thinking right now. Please try again in a moment.";
+            if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
+                botReply = result.candidates[0].content.parts[0].text;
+            }
+            // This is a simplified markdown to HTML converter for the chat
+            botReply = botReply
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\* (.*?)(?=\n\* |\n\n|$)/g, '<li>$1</li>')
+                .replace(/(\r\n|\n|\r)/g, '<br>');
+            
+            appendChatMessage(botReply, 'bot', true); // isHTML = true
+
+        } catch (error) {
+            console.error("Error with chatbot Gemini call:", error);
+            appendChatMessage("Sorry, I encountered an error. Please try again.", 'bot');
+        }
+    }
+
+
+    chatBubble.addEventListener('click', () => {
+        chatWindow.classList.toggle('hidden');
+        if (!chatWindow.classList.contains('hidden')) chatInput.focus();
+    });
+
+    closeChatBtn.addEventListener('click', () => {
+        chatWindow.classList.add('hidden');
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text) return;
+        appendChatMessage(text, 'user');
+        chatInput.value = '';
+
+        const typing = document.createElement('div');
+        typing.className = 'chat-message bot';
+        typing.innerHTML = '<div class="spinner w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full"></div>';
+        chatMessages.appendChild(typing);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        await getGeminiResponse(text);
+        typing.remove();
+    });
+
+    appendChatMessage("Hello! I'm Atlas, your AI career coach. How can I help you prepare for your internship?", 'bot');
+});
+
+</script>
+
+</body>
+</html>
+
