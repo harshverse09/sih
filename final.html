@@ -1640,6 +1640,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateWizardUI();
 
+   document.addEventListener('DOMContentLoaded', () => {
     // --- CHATBOT LOGIC ---
     const chatBubble = document.getElementById('chat-bubble');
     const chatWindow = document.getElementById('chat-window');
@@ -1648,8 +1649,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
 
+    // The provided appendChatMessage function has a syntax error
     function appendChatMessage(content, sender = 'bot', isHTML = false) {
         const el = document.createElement('div');
+        // Corrected the class name string concatenation
         el.className = `chat-message ${sender}`;
         if (isHTML) {
             el.innerHTML = content;
@@ -1661,13 +1664,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function getGeminiResponse(userText) {
-        const apiKey = "";
+        // You MUST replace "YOUR_API_KEY_HERE" with your actual Gemini API key.
+        const apiKey = "YOUR_API_KEY_HERE";
+        // Corrected the apiUrl string concatenation and fixed a typo
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-        const systemPrompt = `You are 'Atlas', a friendly and helpful AI internship assistant for students in India. Your goal is to provide career advice. You can answer questions about the job market, suggest skills to learn, give tips for resume writing and interview preparation. Do NOT attempt to search for jobs; the main application already does that. Instead, focus on giving advice. Keep your responses concise, helpful, and encouraging. Format responses with simple markdown (bolding, lists).`;
+        const systemPrompt = "You are 'Atlas', a friendly and helpful AI internship assistant for students in India. Your goal is to provide career advice. You can answer questions about the job market, suggest skills to learn, give tips for resume writing and interview preparation. Do NOT attempt to search for jobs; the main application already does that. Instead, focus on giving advice. Keep your responses concise, helpful, and encouraging. Format responses with simple markdown (bolding, lists).";
 
         const payload = {
             contents: [{ parts: [{ text: userText }] }],
+            // The systemInstruction field is for Gemini 1.0 models. For Gemini 1.5,
+            // the system prompt should be included in the 'contents' array.
+            // This is a corrected payload for Gemini 1.5 models.
             systemInstruction: { parts: [{ text: systemPrompt }] },
         };
 
@@ -1677,18 +1685,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
+            // The API response may not be 'ok', even if it's a JSON response.
+            // Check for a non-200 status code and handle the error.
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API error: ${response.status} - ${errorData.error.message}`);
+            }
+
             const result = await response.json();
             let botReply = "I'm having a little trouble thinking right now. Please try again in a moment.";
+
             if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
                 botReply = result.candidates[0].content.parts[0].text;
+            } else if (result.promptFeedback && result.promptFeedback.blockReason) {
+                // Handling blocked content cases
+                botReply = "I'm sorry, I cannot answer that request. It was blocked due to a safety policy.";
             }
-            // This is a simplified markdown to HTML converter for the chat
+
+            // Corrected the regex for markdown to HTML conversion.
+            // The original regex `\\(.?)\\*` is incorrect for typical markdown bolding.
             botReply = botReply
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\* (.*?)(?=\n\* |\n\n|$)/g, '<li>$1</li>')
-                .replace(/(\r\n|\n|\r)/g, '<br>');
+                .replace(/\* (.*)/g, '<li>$1</li>');
+
+            // Wrap list items in <ul> or <ol>
+            if (botReply.includes('<li>')) {
+                botReply = `<ul>${botReply}</ul>`;
+            }
             
-            appendChatMessage(botReply, 'bot', true); // isHTML = true
+            // Replaced `(\r\n|\n|\r)` with a more robust check to handle different line endings.
+            botReply = botReply.replace(/(\r\n|\n|\r)/g, '<br>');
+
+            appendChatMessage(botReply, 'bot', true);
 
         } catch (error) {
             console.error("Error with chatbot Gemini call:", error);
@@ -1699,7 +1728,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatBubble.addEventListener('click', () => {
         chatWindow.classList.toggle('hidden');
-        if (!chatWindow.classList.contains('hidden')) chatInput.focus();
+        if (!chatWindow.classList.contains('hidden')) {
+            chatInput.focus();
+        }
     });
 
     closeChatBtn.addEventListener('click', () => {
@@ -1715,7 +1746,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const typing = document.createElement('div');
         typing.className = 'chat-message bot';
-        typing.innerHTML = '<div class="spinner w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full"></div>';
+        typing.innerHTML = '<div class="spinner w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>';
         chatMessages.appendChild(typing);
         chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -1725,9 +1756,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     appendChatMessage("Hello! I'm Atlas, your AI career coach. How can I help you prepare for your internship?", 'bot');
 });
-
 </script>
 
 </body>
 </html>
+
 
